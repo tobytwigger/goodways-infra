@@ -4,7 +4,7 @@ services:
   # POSTGRESQL
   # ─────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:18-alpine
+    image: postgis/postgis:17-3.5-alpine
     # Matches your existing Coolify resource image.
     # Pinned to major version, alpine for smaller footprint.
 
@@ -36,7 +36,7 @@ services:
       # This is the critical volume — back this up regularly.
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}" ]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -48,6 +48,7 @@ services:
 
     networks:
       - postgres_network
+      - coolify
 
   # ─────────────────────────────────────────────────────────────
   # POSTGRES EXPORTER
@@ -92,6 +93,8 @@ networks:
     # Your Laravel API should be added to this network if it connects
     # via container name rather than the host port binding above.
     # See note below on connecting Laravel.
+  coolify:
+    external: true
 
 volumes:
   postgres_data:

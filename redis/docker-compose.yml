@@ -81,6 +81,7 @@ services:
 
     networks:
       - redis_network
+      - coolify
 
 networks:
   redis_network:
@@ -90,6 +91,8 @@ networks:
     # services explicitly added to this network.
     # Your Laravel API will connect via the exposed host port
     # or you can attach it to this network in its own compose file.
+  coolify:
+    external: true
 
 volumes:
   redis_data:
