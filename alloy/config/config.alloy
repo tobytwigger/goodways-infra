@@ -12,30 +12,33 @@ discovery.docker "containers" {
 }
 
 discovery.relabel "containers" {
-  // Transforms raw Docker metadata into the label shape we want in Loki.
-  // Ref: https://grafana.com/docs/alloy/latest/reference/components/discovery.relabel/
   targets = discovery.docker.containers.targets
 
+  // 1. Prefer the app.name Docker label if set.
   rule {
-    source_labels = ["__meta_docker_container_name"]
-    regex         = "/(.*)"
+    source_labels = ["__meta_docker_container_label_app_name"]
     target_label  = "app"
-    // Container names have a leading slash ("/laravel-api" → "laravel-api").
-    // The regex captures everything after the slash.
-    // Full list of available __meta_docker_* labels:
-    // https://grafana.com/docs/alloy/latest/reference/components/discovery.docker/#available-meta-labels
   }
 
+  // 2. Fall back to the container name (strip leading slash) only when
+  //    app is still empty after rule 1.
+  //    Combines both labels: "^;/(.*)" matches when app="" and name="/foo".
+  rule {
+    source_labels = ["app", "__meta_docker_container_name"]
+    separator     = ";"
+    regex         = "^;/(.*)"
+    target_label  = "app"
+    replacement   = "$1"
+  }
+
+  // 3. Compose metadata.
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
     target_label  = "compose_project"
-    // Carry through the Compose stack name (e.g. "goodways-api") as a label.
   }
-
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
     target_label  = "compose_service"
-    // Carry through the Compose service name (e.g. "api", "redis") as a label.
   }
 }
 
