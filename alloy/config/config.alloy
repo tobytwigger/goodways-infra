@@ -243,11 +243,11 @@ prometheus.scrape "postgres" {
 // Uncomment once node-exporter is deployed.
 // Dashboard: https://grafana.com/grafana/dashboards/1860
 //
-// prometheus.scrape "node" {
-//   targets = [{ __address__ = "localhost:9100", job = "node", server = sys.env("ALLOY_SERVER_NAME") }]
-//   scrape_interval = "30s"
-//   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
-// }
+prometheus.scrape "node" {
+  targets = [{ __address__ = "localhost:9100", job = "node", server = sys.env("ALLOY_SERVER_NAME") }]
+  scrape_interval = "30s"
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
 
 // ── Alloy self-monitoring ──────────────────────────────────
 // Scrapes Alloy's own internal metrics (log lines processed, errors,

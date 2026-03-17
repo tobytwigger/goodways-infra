@@ -48,6 +48,27 @@ services:
       PROM_USER: ${PROM_USER}
       GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
 
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    network_mode: host
+    # host networking required — node_exporter needs to read the host's
+    # /proc and /sys filesystems to report accurate system metrics.
+    pid: host
+    # Required for accurate per-process metrics.
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.rootfs=/rootfs
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+      # Excludes virtual filesystems so the dashboard isn't cluttered
+      # with /proc, /sys, cgroup mounts etc.
+
 volumes:
   alloy_data:
     driver: local
