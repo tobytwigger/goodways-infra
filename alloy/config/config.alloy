@@ -44,17 +44,7 @@ discovery.relabel "containers" {
 // LOGS → LOKI (Grafana Cloud)
 // Ref: https://grafana.com/docs/alloy/latest/reference/components/loki.source.docker/
 // ============================================================
- 2026-Mar-17 01:56:58.802428 Docker 29.3.0 with BuildKit and Buildx detected on deployment server (api).
-2026-Mar-17 01:56:58.810380 Starting deployment of api-server-logging to api.
-2026-Mar-17 01:56:59.061786 Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.12
-2026-Mar-17 01:57:02.157166 ----------------------------------------
-2026-Mar-17 01:57:02.167359 Importing <REDACTED>:tobytwigger/goodways-infra:develop (commit sha b6231cbe6f4a0f345a067e5aca740923a940e2dc) to /artifacts/fyfkbdbrjvubd20xzf8qzwum.
-2026-Mar-17 01:57:10.808495 Pulling & building required images.
-2026-Mar-17 01:57:11.168148 Adding build arguments to Docker Compose build command.
-2026-Mar-17 01:57:12.205047 Removing old containers.
-2026-Mar-17 01:57:12.851400 Starting new application.
-2026-Mar-17 01:57:14.181594 New container started.
-2026-Mar-17 01:57:14.549987 Gracefully shutting down build container: fyfkbdbrjvubd20xzf8qzwum 
+
 loki.source.docker "docker_logs" {
   host       = "unix:///var/run/docker.sock"
   targets    = discovery.relabel.containers.output
