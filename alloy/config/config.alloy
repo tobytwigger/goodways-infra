@@ -1,0 +1,291 @@
+// ============================================================
+// DOCKER CONTAINER DISCOVERY
+// Finds all running containers on this host so Alloy knows
+// what to collect logs from.
+// Ref: https://grafana.com/docs/alloy/latest/reference/components/discovery.docker/
+// ============================================================
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+  // Connect to Docker via the Unix socket mounted in docker-compose.yml.
+  // Returns all running containers as targets with their metadata.
+}
+
+discovery.relabel "containers" {
+  // Transforms raw Docker metadata into the label shape we want in Loki.
+  // Ref: https://grafana.com/docs/alloy/latest/reference/components/discovery.relabel/
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "app"
+    // Container names have a leading slash ("/laravel-api" → "laravel-api").
+    // The regex captures everything after the slash.
+    // Full list of available __meta_docker_* labels:
+    // https://grafana.com/docs/alloy/latest/reference/components/discovery.docker/#available-meta-labels
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+    // Carry through the Compose stack name (e.g. "goodways-api") as a label.
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+    // Carry through the Compose service name (e.g. "api", "redis") as a label.
+  }
+}
+
+
+// ============================================================
+// LOGS → LOKI (Grafana Cloud)
+// Ref: https://grafana.com/docs/alloy/latest/reference/components/loki.source.docker/
+// ============================================================
+
+loki.source.docker "docker_logs" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.process.enrich.receiver]
+  // Passes the relabelled targets (one per container) into the processing
+  // pipeline below before writing to Loki.
+}
+
+loki.process "enrich" {
+  // Processing pipeline applied to every log line before storage.
+  // Ref: https://grafana.com/docs/alloy/latest/reference/components/loki.process/
+
+  stage.docker {
+    // ⚠️  This stage is required when using loki.source.docker.
+    // Docker wraps every log line in a JSON envelope:
+    //   {"log":"actual message
+","stream":"stdout","time":"2026-03-17T..."}
+    // stage.docker unwraps this, extracts the actual log content, sets the
+    // timestamp from Docker's "time" field, and adds a "stream" label
+    // (stdout vs stderr). Without this, the raw JSON envelope gets stored
+    // instead of the actual log message.
+    // Ref: https://grafana.com/docs/alloy/latest/tutorials/processing-logs/
+  }
+
+  stage.static_labels {
+    values = {
+      server = sys.env("ALLOY_SERVER_NAME"),
+      // sys.env() reads from the container environment — set per-server
+      // in Coolify's environment variables UI ("api-server", "app-server").
+      // Ref: https://grafana.com/docs/alloy/latest/reference/stdlib/sys.env/
+      env = sys.env("ALLOY_ENV"),
+      // e.g. "production". Useful if you later add a staging server.
+    }
+  }
+
+  stage.json {
+    // Parse the log line as JSON and extract fields into the pipeline.
+    // Laravel (with json log channel) and Nuxt (with pino/consola) both
+    // emit structured JSON. Non-JSON lines (e.g. raw PHP errors) will
+    // pass through without being parsed — they still get stored, just
+    // without these extracted fields.
+    expressions = {
+      level   = "level",   // info / warning / error / debug
+      traceId = "traceId", // injected by OpenTelemetry instrumentation
+    }
+  }
+
+  stage.labels {
+    values = {
+      level = "",
+      // Promotes the extracted "level" field into an indexed Loki label
+      // so you can filter logs by level in Grafana.
+      // Empty string means "use the value from stage.json above".
+      //
+      // ⚠️  Do NOT add traceId as a label. It has one unique value per
+      // request (high cardinality) which would create a new Loki stream
+      // per request and severely degrade query performance.
+      // traceId is stored as a structured metadata field instead, which
+      // Grafana's derived fields config uses to link to Tempo.
+      // Ref: https://grafana.com/docs/loki/latest/get-started/labels/bp-labels/
+    }
+  }
+
+  stage.drop {
+    expression = ".*GET /health.*"
+    // Drop health check log lines — no diagnostic value in storing these.
+    // Adjust the regex to match your actual health endpoint path.
+  }
+  stage.drop {
+    expression = ".*GET /up.*"
+    // Laravel's default /up health endpoint (added in Laravel 11).
+  }
+
+  forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+loki.write "grafana_cloud" {
+  // Ships processed log lines to Grafana Cloud's Loki.
+  // Ref: https://grafana.com/docs/alloy/latest/reference/components/loki.write/
+  endpoint {
+    url = coalesce(sys.env("LOKI_URL"), "http://misconfigured-missing-loki-url") + "/loki/api/v1/push"
+    // coalesce() returns the first non-empty value. The fallback string is
+    // intentionally invalid so a missing LOKI_URL fails loudly with a
+    // connection error rather than silently doing nothing.
+    // /loki/api/v1/push is Loki's standard log ingestion endpoint.
+    // Ref: https://grafana.com/docs/loki/latest/reference/api/#push-log-entries-to-loki
+
+    basic_auth {
+      username = sys.env("LOKI_USER")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
+  }
+}
+
+
+// ============================================================
+// TRACES → TEMPO (Grafana Cloud)
+//
+// Your apps send OTLP traces to localhost:4317 (gRPC) or
+// localhost:4318 (HTTP). Alloy receives and forwards to Grafana Cloud.
+//
+// Using otelcol.exporter.otlphttp (HTTP) not otelcol.exporter.otlp (gRPC)
+// because the official Alloy docs explicitly state:
+// "For Grafana Cloud, use otelcol.exporter.otlphttp which sends data
+//  over HTTP/HTTPS."
+// Ref: https://grafana.com/docs/alloy/latest/collect/opentelemetry-to-lgtm-stack/
+// ============================================================
+
+otelcol.receiver.otlp "default" {
+  // Listens for incoming traces in OTLP format from Laravel and Nuxt.
+  // With network_mode: host, these ports belong to the host — apps can
+  // send to localhost:4317 or localhost:4318.
+  // Ref: https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.otlp/
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+  http {
+    endpoint = "0.0.0.0:4318"
+    // Laravel's OTEL PHP SDK uses HTTP by default. Nuxt can use either.
+  }
+
+  output {
+    traces = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  // Accumulates spans and sends them in batches, reducing the number of
+  // outbound HTTPS requests to Grafana Cloud.
+  // Ref: https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.batch/
+  timeout         = "5s"
+  send_batch_size = 1000
+
+  output {
+    traces = [otelcol.exporter.otlphttp.grafana_cloud.input]
+  }
+}
+
+otelcol.auth.basic "grafana_cloud_traces" {
+  // Attaches HTTP Basic Auth credentials to outbound OTLP requests.
+  // Ref: https://grafana.com/docs/alloy/latest/reference/components/otelcol.auth.basic/
+  username = sys.env("TEMPO_USER")
+  password = sys.env("GRAFANA_CLOUD_API_KEY")
+}
+
+otelcol.exporter.otlphttp "grafana_cloud" {
+  // Exports traces to Grafana Cloud's Tempo over HTTPS.
+  // Ref: https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlphttp/
+  //
+  // Official Grafana Cloud example:
+  // https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlphttp/
+  client {
+    endpoint = sys.env("TEMPO_URL")
+    // TEMPO_URL should be the full HTTPS endpoint from the Grafana Cloud
+    // portal Tempo details page, e.g:
+    //   https://tempo-eu-west-0.grafana.net
+    // (without a path — otlphttp appends /v1/traces automatically)
+    auth = otelcol.auth.basic.grafana_cloud_traces.handler
+  }
+}
+
+
+// ============================================================
+// METRICS → MIMIR (Grafana Cloud)
+// Scrapes Prometheus-format metrics from exporters and ships
+// via remote_write.
+// ============================================================
+
+// ── Redis ──────────────────────────────────────────────────
+// Requires redis_exporter sidecar — see Phase 4.
+// Dashboard: https://grafana.com/grafana/dashboards/11835
+prometheus.scrape "redis" {
+  targets = [{
+    __address__ = "localhost:9121",
+    job         = "redis",
+    server      = sys.env("ALLOY_SERVER_NAME"),
+  }]
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ── PostgreSQL ─────────────────────────────────────────────
+// Requires postgres_exporter sidecar — see Phase 4.
+// Dashboard: https://grafana.com/grafana/dashboards/9628
+prometheus.scrape "postgres" {
+  targets = [{
+    __address__ = "localhost:9187",
+    job         = "postgres",
+    server      = sys.env("ALLOY_SERVER_NAME"),
+  }]
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ── node_exporter (host CPU / memory / disk) ───────────────
+// Requires node-exporter container — see Phase 4.
+// Uncomment once node-exporter is deployed.
+// Dashboard: https://grafana.com/grafana/dashboards/1860
+//
+// prometheus.scrape "node" {
+//   targets = [{ __address__ = "localhost:9100", job = "node", server = sys.env("ALLOY_SERVER_NAME") }]
+//   scrape_interval = "30s"
+//   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+// }
+
+// ── Alloy self-monitoring ──────────────────────────────────
+// Scrapes Alloy's own internal metrics (log lines processed, errors,
+// memory use) so you can see if the agent itself is healthy.
+prometheus.scrape "alloy_self" {
+  targets = [{
+    __address__ = "localhost:12345",
+    job         = "alloy",
+    server      = sys.env("ALLOY_SERVER_NAME"),
+  }]
+  scrape_interval = "60s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ── Remote write to Mimir ──────────────────────────────────
+prometheus.remote_write "grafana_cloud" {
+  // Ships all scraped metrics to Grafana Cloud using Prometheus remote_write.
+  // Ref: https://grafana.com/docs/alloy/latest/reference/components/prometheus.remote_write/
+  endpoint {
+    url = sys.env("PROM_URL") + "/api/prom/push"
+    // PROM_URL is the Prometheus base URL from the Grafana Cloud portal,
+    // e.g. https://prometheus-prod-eu-west-0.grafana.net
+    // /api/prom/push is the Mimir remote_write ingestion path.
+    // Ref: https://grafana.com/docs/mimir/latest/references/http-api/#remote-write
+
+    basic_auth {
+      username = sys.env("PROM_USER")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
+
+    queue_config {
+      max_samples_per_send = 2000
+      batch_send_deadline  = "5s"
+      min_backoff          = "30ms"
+      max_backoff          = "5s"
+      // Exponential backoff on failure. Alloy queues and retries
+      // automatically if Grafana Cloud is temporarily unreachable.
+    }
+  }
+}

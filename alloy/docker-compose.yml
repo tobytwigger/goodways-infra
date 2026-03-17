@@ -1,0 +1,53 @@
+services:
+  alloy:
+    image: grafana/alloy:v1.7.1
+    container_name: alloy
+    restart: unless-stopped
+
+    network_mode: host
+    # Host networking is required so Alloy can:
+    # 1. Receive traces on localhost:4317/4318 from your Laravel/Nuxt apps
+    # 2. Scrape metrics from Redis/Postgres exporters on their localhost ports
+    # Without this, those localhost ports belong to other containers,
+    # not to Alloy.
+
+    volumes:
+      - ./config:/etc/alloy
+      # Git-tracked config from this repo.
+
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Alloy reads Docker log files directly from this host path.
+      # :ro — read only, Alloy never needs to write here.
+
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Docker socket — lets Alloy discover running containers and
+      # read their metadata (name, labels, etc.) to apply as log labels.
+      # :ro — Alloy only needs to query, not control Docker.
+
+      - alloy_data:/var/lib/alloy
+      # Persistent storage for Alloy's WAL (write-ahead log) and
+      # position files. Without this, Alloy would re-send all logs
+      # from scratch on every restart.
+
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+      # Port 12345 is Alloy's own UI — useful for debugging.
+      # Accessible via SSH tunnel: ssh -L 12345:localhost:12345 user@server
+
+    environment:
+      ALLOY_SERVER_NAME: ${ALLOY_SERVER_NAME}
+      ALLOY_ENV: ${ALLOY_ENV}
+      LOKI_URL: ${LOKI_URL}
+      LOKI_USER: ${LOKI_USER}
+      TEMPO_URL: ${TEMPO_URL}
+      TEMPO_USER: ${TEMPO_USER}
+      PROM_URL: ${PROM_URL}
+      PROM_USER: ${PROM_USER}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
+
+volumes:
+  alloy_data:
+    driver: local
