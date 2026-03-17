@@ -3,7 +3,8 @@ services:
     image: grafana/alloy:v1.7.1
     container_name: alloy
     restart: unless-stopped
-
+    labels:
+      - "app.name=alloy"
     network_mode: host
     # Host networking is required so Alloy can:
     # 1. Receive traces on localhost:4317/4318 from your Laravel/Nuxt apps
