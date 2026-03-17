@@ -47,6 +47,7 @@ services:
 
     networks:
       - redis_network
+      - coolify
 
   # ─────────────────────────────────────────────────────────────
   # REDIS EXPORTER
