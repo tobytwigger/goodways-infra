@@ -1,0 +1,56 @@
+auth_enabled: false
+# Single-tenant mode. Fine for self-hosted. Set to true and pass
+# X-Scope-OrgID headers if you need multi-tenancy.
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: info
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  # Filesystem storage with in-memory ring is correct for a single-node
+  # self-hosted setup. Don't use this config if you ever run multiple
+  # Loki replicas.
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+      # TSDB + schema v13 is the current recommended config for Loki 3.x.
+
+limits_config:
+  retention_period: 744h
+  # 31 days. Loki will delete chunks older than this.
+  # Requires compactor.retention_enabled = true (set below).
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+  # Generous defaults for a single self-hosted server. Lower if needed.
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  retention_delete_delay: 2h
+  # Runs compaction and enforces the retention_period above.
+  # The 2h delay gives a buffer before chunks are permanently deleted.
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100

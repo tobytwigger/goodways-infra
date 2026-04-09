@@ -1,0 +1,135 @@
+services:
+
+  # ─────────────────────────────────────────────────────────────
+  # LOKI
+  # Log aggregation backend. Alloy ships logs here; Grafana queries it.
+  # Docs: https://grafana.com/docs/loki/latest/
+  # ─────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: loki
+    restart: unless-stopped
+
+    labels:
+      - "app.name=loki"
+
+    command: -config.file=/etc/loki/config.yaml
+
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      - loki_data:/loki
+
+    ports:
+      - "127.0.0.1:3100:3100"
+      # Loopback only. Alloy and Grafana reach Loki via the coolify
+      # network using the container name, not this host port.
+      # Exposed here for local debugging only (e.g. curl localhost:3100/ready).
+
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    networks:
+      - logging_network
+      - coolify
+
+  # ─────────────────────────────────────────────────────────────
+  # PROMETHEUS
+  # Metrics backend. Scrapes exporters and receives remote_write
+  # from Alloy. Grafana queries it for dashboards/alerts.
+  # Docs: https://prometheus.io/docs/
+  # ─────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v3.3.0
+    container_name: prometheus
+    restart: unless-stopped
+
+    labels:
+      - "app.name=prometheus"
+
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      # Keep 30 days of metrics. Adjust down if disk is tight.
+      - --web.enable-remote-write-receiver
+      # Allows Alloy to remote_write metrics to Prometheus.
+      # Without this flag, the /api/v1/write endpoint is disabled.
+
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+    ports:
+      - "127.0.0.1:9090:9090"
+      # Loopback only. Grafana reaches Prometheus via the coolify network.
+
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    networks:
+      - logging_network
+      - coolify
+
+  # ─────────────────────────────────────────────────────────────
+  # TEMPO
+  # Distributed tracing backend. Receives traces from Alloy via OTLP
+  # and exposes them to Grafana for trace exploration.
+  # Docs: https://grafana.com/docs/tempo/latest/
+  # ─────────────────────────────────────────────────────────────
+  tempo:
+    image: grafana/tempo:2.7.2
+    container_name: tempo
+    restart: unless-stopped
+
+    labels:
+      - "app.name=tempo"
+
+    command: -config.file=/etc/tempo/config.yaml
+
+    volumes:
+      - ./tempo-config.yaml:/etc/tempo/config.yaml:ro
+      - tempo_data:/var/tempo
+
+    ports:
+      - "127.0.0.1:3200:3200"
+        # Tempo HTTP API — Grafana datasource points here.
+      - "127.0.0.1:14317:4317"   # remapped to avoid conflict with Alloy on host
+        # OTLP gRPC — Alloy forwards traces here.
+      - "127.0.0.1:14318:4318"   # remapped to avoid conflict with Alloy on host
+        # OTLP HTTP — alternative ingestion endpoint.
+
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q --spider http://localhost:3200/ready || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    networks:
+      - logging_network
+      - coolify
+
+networks:
+  logging_network:
+    driver: bridge
+    # Isolated network for the logging stack components to talk to each other.
+  coolify:
+    external: true
+    # Shared network that allows Grafana and Alloy to reach these services
+    # by container name (loki, prometheus, tempo).
+
+volumes:
+  loki_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  tempo_data:
+    driver: local

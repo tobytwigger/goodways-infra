@@ -1,0 +1,52 @@
+server:
+  http_listen_port: 3200
+  log_level: info
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+      # Accepts traces from Alloy (or any OTLP-compatible client)
+      # over gRPC or HTTP.
+
+ingester:
+  max_block_duration: 5m
+  # Flush blocks to storage every 5 minutes.
+
+compactor:
+  compaction:
+    block_retention: 336h
+    # Keep 14 days of traces. Traces are bulkier than logs/metrics
+    # so a shorter retention than Loki is sensible.
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal
+    # Local filesystem storage. Sufficient for single-node.
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+        # Tempo can generate service graph and span metrics and push them
+        # to Prometheus via remote_write. Very useful for RED dashboards
+        # (Rate, Errors, Duration) without extra instrumentation.
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [ service-graphs, span-metrics ]
+      # Enables the two most useful auto-generated metric types.

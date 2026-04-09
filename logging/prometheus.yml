@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 15s
+  # How often Prometheus scrapes each target. 15s is a sensible default.
+  evaluation_interval: 15s
+  # How often recording rules and alerts are evaluated.
+
+scrape_configs:
+
+  # ── Prometheus self-scrape ───────────────────────────────────
+  - job_name: prometheus
+    static_configs:
+      - targets: [ "localhost:9090" ]
+
+  # ── Loki self-scrape ─────────────────────────────────────────
+  - job_name: loki
+    static_configs:
+      - targets: [ "loki:3100" ]
+
+  # ── Tempo self-scrape ────────────────────────────────────────
+  - job_name: tempo
+    static_configs:
+      - targets: [ "tempo:3200" ]
+
+  # Add further jobs here as you add more exporters, e.g.:
+  # - job_name: node
+  #   static_configs:
+  #     - targets: ["node-exporter:9100"]
