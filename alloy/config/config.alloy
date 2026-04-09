@@ -193,4 +193,78 @@ otelcol.exporter.otlp "local_tempo" {
     endpoint = "localhost:14317"
     tls {
       insecure = true
-      // No TLS needed for
+      // No TLS needed for local container-to-container traffic.
+    }
+  }
+}
+
+
+// ============================================================
+// METRICS → PROMETHEUS
+//
+// Alloy scrapes Prometheus-format metrics from exporters running
+// on this host and forwards them to Prometheus for storage.
+// Grafana queries Prometheus to power dashboards and alerts.
+// ============================================================
+
+prometheus.scrape "redis" {
+  // Scrapes the Redis exporter sidecar (oliver006/redis_exporter).
+  // Exposes Redis memory, hit rates, connected clients, etc.
+  // Recommended dashboard: https://grafana.com/grafana/dashboards/11835
+  targets = [{
+    __address__ = "localhost:9121",
+    job         = "redis",
+    server      = sys.env("ALLOY_SERVER_NAME"),
+  }]
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.scrape "postgres" {
+  // Scrapes the Postgres exporter sidecar (prometheus-community/postgres_exporter).
+  // Exposes query counts, table sizes, replication lag, lock counts, etc.
+  // Recommended dashboard: https://grafana.com/grafana/dashboards/9628
+  targets = [{
+    __address__ = "localhost:9187",
+    job         = "postgres",
+    server      = sys.env("ALLOY_SERVER_NAME"),
+  }]
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.scrape "node" {
+  // Scrapes node_exporter for host-level metrics: CPU, memory, disk I/O,
+  // network throughput, filesystem usage. Runs with host networking and
+  // pid:host in docker-compose.yml so it can read /proc and /sys accurately.
+  // Recommended dashboard: https://grafana.com/grafana/dashboards/1860
+  targets = [{ __address__ = "localhost:9100", job = "node", server = sys.env("ALLOY_SERVER_NAME") }]
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.scrape "alloy_self" {
+  // Scrapes Alloy's own internal metrics — log lines processed, errors,
+  // pipeline throughput, memory usage. Lets you verify Alloy is healthy
+  // and not silently dropping logs or traces.
+  // Port 12345 is Alloy's built-in HTTP server (also hosts its debug UI).
+  targets = [{
+    __address__ = "localhost:12345",
+    job         = "alloy",
+    server      = sys.env("ALLOY_SERVER_NAME"),
+  }]
+  scrape_interval = "60s"
+  forward_to      = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.remote_write "local" {
+  // All scrape jobs above forward to this single remote_write block,
+  // which pushes metrics to the local Prometheus instance.
+  // --web.enable-remote-write-receiver must be set on Prometheus —
+  // this is already done in logging/docker-compose.yml.
+  endpoint {
+    url = "http://localhost:9090/api/v1/write"
+    // Alloy uses host networking; Prometheus is bound to 127.0.0.1:9090
+    // on the host in logging/docker-compose.yml.
+  }
+}
