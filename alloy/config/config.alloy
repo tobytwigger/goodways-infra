@@ -78,7 +78,7 @@ loki.process "enrich" {
   stage.docker {}
   // REQUIRED when using loki.source.docker.
   // Docker wraps every log line in a JSON envelope:
-  //   {"log":"actual message","stream":"stdout","time":"2026-..."}
+  //    {"log":"actual message","stream":"stdout","time":"2026-..."}
   // This stage unwraps it, extracts the real log content, sets the
   // timestamp from Docker's "time" field, and adds a "stream" label
   // (stdout vs stderr). Without it, the raw JSON wrapper gets stored
@@ -86,7 +86,7 @@ loki.process "enrich" {
 
   stage.static_labels {
     values = {
-      server = sys.env("ALLOY_SERVER_NAME"),
+      instance = sys.env("ALLOY_SERVER_NAME"),
       // sys.env() reads from the container's environment variables.
       // ALLOY_SERVER_NAME is set in Coolify's env vars UI and passed
       // through docker-compose.yml. Identifies which server these logs
@@ -177,7 +177,7 @@ otelcol.receiver.otlp "default" {
 otelcol.processor.batch "default" {
   // Buffers spans and sends them to Tempo in batches rather than one
   // at a time. Reduces network overhead and Tempo ingestion load.
-  timeout         = "5s"   // flush at least every 5 seconds
+  timeout          = "5s"   // flush at least every 5 seconds
   send_batch_size = 1000   // or sooner if 1000 spans have accumulated
 
   output {
@@ -217,7 +217,7 @@ prometheus.scrape "redis" {
   targets = [{
     __address__ = "127.0.0.1:9121",
     job         = "redis",
-    server      = sys.env("ALLOY_SERVER_NAME"),
+    instance    = sys.env("ALLOY_SERVER_NAME"),
   }]
   scrape_interval = "30s"
   forward_to      = [prometheus.remote_write.local.receiver]
@@ -230,7 +230,7 @@ prometheus.scrape "postgres" {
   targets = [{
     __address__ = "127.0.0.1:9187",
     job         = "postgres",
-    server      = sys.env("ALLOY_SERVER_NAME"),
+    instance    = sys.env("ALLOY_SERVER_NAME"),
   }]
   scrape_interval = "30s"
   forward_to      = [prometheus.remote_write.local.receiver]
@@ -241,7 +241,7 @@ prometheus.scrape "node" {
   // network throughput, filesystem usage. Runs with host networking and
   // pid:host in docker-compose.yml so it can read /proc and /sys accurately.
   // Recommended dashboard: https://grafana.com/grafana/dashboards/1860
-  targets = [{ __address__ = "127.0.0.1:9100", job = "node", server = sys.env("ALLOY_SERVER_NAME") }]
+  targets = [{ __address__ = "127.0.0.1:9100", job = "node", instance = sys.env("ALLOY_SERVER_NAME") }]
   scrape_interval = "30s"
   forward_to      = [prometheus.remote_write.local.receiver]
 }
@@ -254,7 +254,7 @@ prometheus.scrape "alloy_self" {
   targets = [{
     __address__ = "127.0.0.1:12345",
     job         = "alloy",
-    server      = sys.env("ALLOY_SERVER_NAME"),
+    instance    = sys.env("ALLOY_SERVER_NAME"),
   }]
   scrape_interval = "60s"
   forward_to      = [prometheus.remote_write.local.receiver]
