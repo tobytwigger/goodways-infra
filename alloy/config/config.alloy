@@ -139,10 +139,11 @@ loki.process "enrich" {
 
 loki.write "local" {
   endpoint {
-    url = "http://127.0.0.1:3100/loki/api/v1/push"
-    // Alloy runs with host networking, so "localhost" here refers to the
-    // Docker host. Loki's port 3100 is bound to 127.0.0.1 on the host
-    // in logging/docker-compose.yml, making it reachable this way.
+    url = sys.env("LOKI_URL") + "/loki/api/v1/push"
+    basic_auth {
+      username = sys.env("LOKI_USER")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
   }
 }
 
@@ -184,16 +185,18 @@ otelcol.processor.batch "default" {
   }
 }
 
+otelcol.auth.basic "tempo" {
+  username = sys.env("TEMPO_USER")
+  password = sys.env("GRAFANA_CLOUD_API_KEY")
+}
+
 otelcol.exporter.otlp "local_tempo" {
   // Forwards batched traces to Tempo over gRPC.
-  // Tempo's gRPC port (4317) is remapped to 14317 on the host in
-  // logging/docker-compose.yml to avoid conflicting with Alloy's own
-  // 4317 listener above (both would otherwise try to bind the same port).
   client {
-    endpoint = "127.0.0.1:14317"
+    endpoint = sys.env("TEMPO_URL")
+    auth     = otelcol.auth.basic.tempo.handler
     tls {
-      insecure = true
-      // No TLS needed for local container-to-container traffic.
+      insecure = false
     }
   }
 }
@@ -258,13 +261,11 @@ prometheus.scrape "alloy_self" {
 }
 
 prometheus.remote_write "local" {
-  // All scrape jobs above forward to this single remote_write block,
-  // which pushes metrics to the local Prometheus instance.
-  // --web.enable-remote-write-receiver must be set on Prometheus —
-  // this is already done in logging/docker-compose.yml.
   endpoint {
-    url = "http://127.0.0.1:9090/api/v1/write"
-    // Alloy uses host networking; Prometheus is bound to 127.0.0.1:9090
-    // on the host in logging/docker-compose.yml.
+    url = sys.env("PROM_URL") + "/api/v1/write"
+    basic_auth {
+      username = sys.env("PROM_USER")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
   }
 }
