@@ -12,6 +12,7 @@ services:
 
     labels:
       - "app.name=loki"
+      - "traefik.docker.network=coolify"
 
     command: -config.file=/etc/config/loki-config.yaml
 
