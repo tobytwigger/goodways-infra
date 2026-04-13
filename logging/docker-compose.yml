@@ -92,6 +92,7 @@ services:
 
     labels:
       - "app.name=tempo"
+      - "traefik.docker.network=coolify"
 
     command: -config.file=/etc/config/tempo-config.yaml
 
