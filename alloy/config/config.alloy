@@ -108,19 +108,34 @@ loki.process "enrich" {
     }
   }
 
+  stage.regex {
+    // Extract the HTTP status code from Laravel/nginx access log lines.
+    // Handles two formats emitted by this app:
+    //
+    //   Format 1 (PHP-FPM / internal):
+    //     127.0.0.1 -  13/Apr/2026:22:17:03 +0000 "GET /index.php" 200
+    //
+    //   Format 2 (nginx combined):
+    //     172.18.0.6 - - [13/Apr/2026:23:29:22 +0000] "GET / HTTP/1.1" 302 278 "-" "..."
+    //
+    // The pattern anchors on the closing quote of the request field, which is
+    // present in both formats regardless of whether HTTP/x.x is included.
+    // Lines that don't match (JSON logs, errors, etc.) pass through unchanged.
+    expression = `"\S+ [^"]+" (?P<status_code>\d{3})\b`
+  }
+
   stage.labels {
     values = {
-      level = "",
-      // Promotes the "level" field extracted above into an indexed Loki
-      // label, so you can filter logs by severity in Grafana.
-      // Empty string means "use the value already extracted by stage.json".
+      level       = "",
+      status_code = "",
+      // HTTP status code from access log lines (e.g. "200", "404", "500").
+      // Low cardinality — only ~60 possible values — safe to use as a label.
       //
-      // ⚠️  traceId is intentionally NOT a label. It has a unique value
-      // per request (high cardinality), which would create a new Loki
-      // stream per request and severely hurt query performance.
-      // traceId stays as log line content — Grafana's derived fields
-      // feature can still use it to jump from a log line to the
-      // corresponding trace in Tempo.
+      // level is promoted from stage.json (e.g. "info", "warning", "error").
+      // ⚠️  traceId is intentionally NOT a label — it's unique per request
+      // (high cardinality), which would create a new Loki stream per request.
+      // It stays as log line content; Grafana derived fields can still link
+      // it to the corresponding trace in Tempo.
     }
   }
 
