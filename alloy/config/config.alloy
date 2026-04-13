@@ -140,10 +140,6 @@ loki.process "enrich" {
 loki.write "local" {
   endpoint {
     url = sys.env("LOKI_URL") + "/loki/api/v1/push"
-    basic_auth {
-      username = sys.env("LOKI_USER")
-      password = sys.env("GRAFANA_CLOUD_API_KEY")
-    }
   }
 }
 
@@ -181,20 +177,16 @@ otelcol.processor.batch "default" {
   send_batch_size = 1000   // or sooner if 1000 spans have accumulated
 
   output {
-    traces = [otelcol.exporter.otlp.local_tempo.input]
+    traces = [otelcol.exporter.otlphttp.local_tempo.input]
   }
 }
 
-otelcol.auth.basic "tempo" {
-  username = sys.env("TEMPO_USER")
-  password = sys.env("GRAFANA_CLOUD_API_KEY")
-}
-
-otelcol.exporter.otlp "local_tempo" {
-  // Forwards batched traces to Tempo over gRPC.
+otelcol.exporter.otlphttp "local_tempo" {
+  // Forwards batched traces to Tempo over OTLP HTTP.
+  // Using HTTP rather than gRPC so traffic passes through Cloudflare without
+  // needing gRPC support enabled.
   client {
     endpoint = sys.env("TEMPO_URL")
-    auth     = otelcol.auth.basic.tempo.handler
     tls {
       insecure = false
     }
@@ -263,9 +255,5 @@ prometheus.scrape "alloy_self" {
 prometheus.remote_write "local" {
   endpoint {
     url = sys.env("PROM_URL") + "/api/v1/write"
-    basic_auth {
-      username = sys.env("PROM_USER")
-      password = sys.env("GRAFANA_CLOUD_API_KEY")
-    }
   }
 }
