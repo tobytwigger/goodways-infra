@@ -44,9 +44,15 @@ metrics_generator:
         # Tempo can generate service graph and span metrics and push them
         # to Prometheus via remote_write. Very useful for RED dashboards
         # (Rate, Errors, Duration) without extra instrumentation.
+  processor:
+    local_blocks:
+      flush_to_storage: true
+      # Required for TraceQL metrics queries and Grafana Traces Drilldown.
+      # Keeps a recent window of trace data in memory for ad-hoc querying.
 
 overrides:
   defaults:
     metrics_generator:
-      processors: [ service-graphs, span-metrics ]
-      # Enables the two most useful auto-generated metric types.
+      processors: [ service-graphs, span-metrics, local-blocks ]
+      # service-graphs and span-metrics feed Prometheus RED dashboards.
+      # local-blocks enables TraceQL metrics queries (Traces Drilldown).
