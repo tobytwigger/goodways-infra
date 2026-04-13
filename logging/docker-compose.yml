@@ -50,6 +50,7 @@ services:
 
     labels:
       - "app.name=prometheus"
+      - "traefik.docker.network=coolify"
 
     command:
       - --config.file=/etc/config/prometheus.yml
