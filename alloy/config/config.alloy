@@ -154,20 +154,15 @@ loki.process "enrich" {
     // point (health/up endpoints are already dropped above).
     // The metric is exposed on Alloy's own HTTP server (port 12345) and
     // picked up by prometheus.scrape "alloy_self" — no extra config needed.
+    //
+    // All current pipeline labels are attached automatically (status_code,
+    // app, instance, env, stream, level, compose_project, compose_service).
+    // Non-HTTP log lines will have status_code="" — filter them in Grafana
+    // with {status_code=~"[0-9]+"}.
     metric.counter {
-      name        = "http_requests_total"
-      description = "Total HTTP requests, partitioned by status code and app"
-      labels      = {
-        status_code = "",
-        // Reads the status_code pipeline label promoted by stage.labels above.
-        // Lines without a status code (non-HTTP log entries) will have an
-        // empty status_code label and can be filtered out in Grafana with
-        // {status_code=~"[0-9]+"}.
-        app      = "",
-        instance = "",
-        env      = "",
-      }
-      action = "inc"
+      name              = "http_requests_total"
+      description       = "Total HTTP requests, partitioned by status code and app"
+      action            = "inc"
       max_idle_duration = "1h"
       // Drop label combinations not seen for 1 hour to avoid stale series.
     }
