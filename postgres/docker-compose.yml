@@ -1,11 +1,65 @@
 services:
 
+
+  # ─────────────────────────────────────────────────────────────
+  # POSTGRESQL
+  # ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgis/postgis:17-3.5-alpine
+    # Matches your existing Coolify resource image.
+    # Pinned to major version, alpine for smaller footprint.
+    labels:
+      - "app.name=postgres"
+
+    container_name: postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
+      # Set all three in Coolify's environment variables UI.
+      # These match the variable names Laravel uses by default
+      # so you can reference the same values in your API's env.
+
+      PGDATA: /var/lib/postgresql/data/pgdata
+      # Explicit data directory inside the mount point.
+      # Avoids a Postgres quirk where it refuses to start if the
+      # mounted volume directory contains unexpected files.
+
+    ports:
+      - "127.0.0.1:5432:5432"
+      # Loopback only — Postgres should never be publicly accessible.
+      # Laravel connects via the internal Docker network using the
+      # container name "postgres", not this host port.
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Persists your database across redeployments.
+      # This is the critical volume — back this up regularly.
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+      # pg_isready checks that Postgres is accepting connections.
+      # The exporter below waits for this before starting.
+      # retries: 5 because Postgres can take a moment on first boot
+      # to initialise the data directory.
+
+    networks:
+      - postgres_network
+      - coolify
+
+
   # ─────────────────────────────────────────────────────────────
   # POSTGRES EXPORTER
   # Exposes PostgreSQL metrics in Prometheus format on port 9187.
   # Alloy (running with host networking on the same server) scrapes
   # localhost:9187 and ships metrics to Grafana Cloud.
-  # Connects to the PostgreSQL instance running on the host machine.
+  # Connects to the postgres container via the shared postgres_network.
   # Docs: https://github.com/prometheus-community/postgres_exporter
   # ─────────────────────────────────────────────────────────────
   postgres-exporter:
@@ -13,10 +67,14 @@ services:
     container_name: postgres-exporter
     restart: unless-stopped
 
+    depends_on:
+      postgres:
+        condition: service_healthy
+
     environment:
-      DATA_SOURCE_NAME: "postgresql://${DB_USERNAME}:${DB_PASSWORD}@host-gateway:5432/${DB_DATABASE}?sslmode=disable"
-      # "host-gateway" resolves to the Docker host IP, allowing the
-      # exporter to reach the PostgreSQL instance running outside Docker.
+      DATA_SOURCE_NAME: "postgresql://${DB_USERNAME}:${DB_PASSWORD}@postgres:5432/${DB_DATABASE}?sslmode=disable"
+      # Connects directly to the postgres container via the shared
+      # postgres_network, using the service name as the hostname.
 
       PG_EXPORTER_AUTO_DISCOVER_DATABASES: "true"
       # Automatically discovers and monitors all databases in the instance,
@@ -26,14 +84,21 @@ services:
       - "127.0.0.1:9187:9187"
       # Loopback only. Alloy scrapes this on localhost:9187.
 
-    extra_hosts:
-      - "host-gateway:host-gateway"
-      # Adds a host entry resolving "host-gateway" to the Docker host IP.
-      # This is what allows the container to reach host-bound services.
-
-
     networks:
-      coolify:
-        external: true
+      - postgres_network
+      - coolify
 
-      
+
+networks:
+  postgres_network:
+    driver: bridge
+    # Isolated network for Postgres and its exporter.
+    # Your Laravel API should be added to this network if it connects
+    # via container name rather than the host port binding above.
+    # See note below on connecting Laravel.
+  coolify:
+    external: true
+
+volumes:
+  postgres_data:
+    driver: local
