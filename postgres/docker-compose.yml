@@ -1,13 +1,12 @@
 services:
-
-
   # ─────────────────────────────────────────────────────────────
   # POSTGRESQL
   # ─────────────────────────────────────────────────────────────
   postgres:
-    image: postgis/postgis:17-3.5-alpine
-    # Matches your existing Coolify resource image.
-    # Pinned to major version, alpine for smaller footprint.
+    build:
+      context: .
+      dockerfile: Dockerfile
+
     labels:
       - "app.name=postgres"
 
@@ -39,7 +38,7 @@ services:
       # This is the critical volume — back this up regularly.
 
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -52,7 +51,6 @@ services:
     networks:
       - postgres_network
       - coolify
-
 
   # ─────────────────────────────────────────────────────────────
   # POSTGRES EXPORTER
@@ -87,7 +85,6 @@ services:
     networks:
       - postgres_network
       - coolify
-
 
 networks:
   postgres_network:
