@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+
+  # ─────────────────────────────────────────────────────────────
+  # VALHALLA
+  # Open-source routing engine for turn-by-turn navigation.
+  # The scripted image downloads OSM tiles on first start (via
+  # tile_urls), builds Valhalla routing graphs, then serves the
+  # HTTP API on port 8002. Subsequent starts skip the build step
+  # if tiles already exist in the volume.
+  # Docs: https://valhalla.github.io/valhalla/#with-docker
+  # ─────────────────────────────────────────────────────────────
+  valhalla:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    labels:
+      - "app.name=valhalla"
+
+    container_name: valhalla
+    restart: unless-stopped
+
+    environment:
+      tile_urls: ${VALHALLA_TILE_URLS}
+      # Space-separated URLs to .osm.pbf files to download and build tiles from.
+      # Set VALHALLA_TILE_URLS in Coolify env vars, e.g.:
+      #   https://download.geofabrik.de/europe/great-britain-latest.osm.pbf
+      # Omit if you pre-download PBF files into the valhalla_data volume
+      # under /custom_files before first boot.
+
+    ports:
+      - "127.0.0.1:8002:8002"
+      # Loopback only — Valhalla should not be publicly accessible.
+      # Laravel connects via the internal Docker network using the
+      # container name "valhalla", not this host port.
+
+    volumes:
+      - valhalla_data:/custom_files
+      # Persists downloaded PBF files and built routing tiles across
+      # redeployments. Tile building can take several minutes for large
+      # regions; the volume prevents rebuilding on every restart.
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8002/status | grep -q '\"version\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+      # /status returns JSON with a "version" field when Valhalla is ready.
+      # start_period is generous because first-boot tile building can take
+      # several minutes depending on region size.
+
+    networks:
+      - coolify
+
+networks:
+  coolify:
+    external: true
+
+volumes:
+  valhalla_data:
+    driver: local
