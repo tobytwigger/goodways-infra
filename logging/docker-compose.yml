@@ -14,6 +14,18 @@ services:
       - "app.name=loki"
       - "traefik.docker.network=coolify"
 
+    # ── Resource ceiling (observability is sacrificial) ──────────
+    # If the host runs low on memory, oom_score_adj makes the kernel
+    # kill this container BEFORE Postgres/Redis/the API, which keep the
+    # default score of 0. The memory limit caps how much it can grab in
+    # the first place. Sized for an 8GB host — tune to taste.
+    oom_score_adj: 750
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+
     command: -config.file=/etc/config/loki-config.yaml
 
     volumes:
@@ -51,6 +63,15 @@ services:
     labels:
       - "app.name=prometheus"
       - "traefik.docker.network=coolify"
+
+    # Resource ceiling — kept higher than Loki/Tempo because Prometheus
+    # holds its TSDB head block in memory. Still OOM-killed before the DBs.
+    oom_score_adj: 700
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.5"
 
     command:
       - --config.file=/etc/config/prometheus.yml
@@ -94,6 +115,14 @@ services:
     labels:
       - "app.name=tempo"
       - "traefik.docker.network=coolify"
+
+    # Resource ceiling — sacrificial, OOM-killed before the DBs.
+    oom_score_adj: 750
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
 
     command: -config.file=/etc/config/tempo-config.yaml
 

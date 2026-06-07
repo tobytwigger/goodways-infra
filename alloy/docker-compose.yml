@@ -5,6 +5,19 @@ services:
     restart: unless-stopped
     labels:
       - "app.name=alloy"
+
+    # ── Resource ceiling (observability is sacrificial) ──────────
+    # Under host memory pressure the kernel kills Alloy before the DBs /
+    # API (which keep the default score of 0). Alloy buffers telemetry to
+    # its WAL, so losing it just drops some in-flight logs/metrics/traces —
+    # never application data. Sized for an 8GB host.
+    oom_score_adj: 800
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+
     network_mode: host
     # Host networking is required so Alloy can:
     # 1. Receive traces on localhost:4317/4318 from your Laravel/Nuxt apps
@@ -49,10 +62,36 @@ services:
       PROM_USER: ${PROM_USER}
       GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
 
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/12345 && printf "GET /-/ready HTTP/1.0\r\n\r\n" >&3 && grep -q "200 OK" <&3'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+      # The Alloy image ships no wget/curl, but it does have bash — so we
+      # open a raw TCP socket via /dev/tcp to Alloy's own HTTP server
+      # (port 12345) and check the /-/ready endpoint returns 200 OK.
+      # /-/ready reports healthy only once Alloy has loaded its config.
+
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.9.1
+    # Pinned — avoid :latest so a redeploy can't silently change versions.
     container_name: node-exporter
     restart: unless-stopped
+
+    # Resource ceiling — node-exporter is tiny and stateless; the most
+    # expendable thing here, so it's first in line for the OOM killer.
+    oom_score_adj: 1000
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.5"
+
     network_mode: host
     # host networking required — node_exporter needs to read the host's
     # /proc and /sys filesystems to report accurate system metrics.
@@ -69,6 +108,16 @@ services:
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
       # Excludes virtual filesystems so the dashboard isn't cluttered
       # with /proc, /sys, cgroup mounts etc.
+
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9100/" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+      # node-exporter's busybox image has wget. Hit the landing page on
+      # :9100 (returns 200 once serving) rather than /metrics, to avoid
+      # triggering a full collector run on every check.
 
 volumes:
   alloy_data:

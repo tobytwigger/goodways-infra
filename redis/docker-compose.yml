@@ -14,6 +14,32 @@ services:
     labels:
       - "app.name=redis"
 
+    stop_grace_period: 1m
+    # Give Redis up to 1 minute to flush its final RDB snapshot to disk
+    # on shutdown before Docker sends SIGKILL. Protects against data loss
+    # on redeploys. Redis treats the default SIGTERM as a clean shutdown.
+
+    security_opt:
+      - no-new-privileges:true
+      # Hardening: the container can never gain new privileges via setuid
+      # binaries. Safe here — the entrypoint only ever drops from root to
+      # the unprivileged "redis" user, it never escalates.
+
+    sysctls:
+      net.core.somaxconn: 511
+      # Raise the TCP accept backlog inside the container's net namespace.
+      # Removes Redis's startup warning and prevents dropped connections
+      # under bursty load. 511 is Redis's own recommended value.
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+      # Cap container logs at 3 × 10MB so a noisy log can never fill the
+      # host disk. Stays on json-file so Alloy can still tail it from
+      # /var/lib/docker/containers.
+
     command: >
       redis-server --requirepass ${REDIS_PASSWORD} --maxmemory ${REDIS_MAX_MEMORY:-256mb} --maxmemory-policy allkeys-lru --save 60 1 --loglevel notice
     # --requirepass: password auth. Set REDIS_PASSWORD in Coolify env vars.
@@ -37,13 +63,14 @@ services:
       # Persists RDB snapshots (from --save above) across redeployments.
 
     healthcheck:
-      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping" ]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
       # redis-cli ping returns PONG when Redis is ready.
-      # The exporter below depends_on this health check.
+      # --no-auth-warning suppresses the stderr warning that -a otherwise
+      # prints on every check. The exporter below depends_on this check.
 
     networks:
       - redis_network
@@ -57,9 +84,30 @@ services:
   # Docs: https://github.com/oliver006/redis_exporter
   # ─────────────────────────────────────────────────────────────
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.69.0
+    # Pinned version — avoid :latest so a redeploy can't silently pull a
+    # breaking exporter change. Bump deliberately.
     container_name: redis-exporter
     restart: unless-stopped
+
+    # Resource ceiling — the exporter is sacrificial telemetry. If it's
+    # OOM-killed you lose Redis metrics, but Redis itself (no limits, default
+    # OOM score) keeps running. That's the intended trade.
+    oom_score_adj: 1000
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
     environment:
       REDIS_ADDR: redis://redis:6379

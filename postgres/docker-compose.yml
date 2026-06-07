@@ -13,6 +13,29 @@ services:
     container_name: postgres
     restart: unless-stopped
 
+    stop_grace_period: 1m
+    # Give Postgres up to 1 minute to complete a clean (fast) shutdown —
+    # rolling back open transactions and checkpointing — before SIGKILL.
+    # Prevents crash-recovery on the next start after a redeploy.
+
+    security_opt:
+      - no-new-privileges:true
+      # Hardening: no privilege escalation via setuid. Safe — the entrypoint
+      # only drops from root to the "postgres" user, never the reverse.
+
+    shm_size: 256mb
+    # Postgres uses /dev/shm for parallel query workers and large hash/sort
+    # operations. Docker's 64MB default is too small and causes
+    # "could not resize shared memory segment" errors under load.
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+      # Cap container logs so they can't fill the host disk; stays on
+      # json-file so Alloy can still tail it.
+
     environment:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -20,6 +43,11 @@ services:
       # Set all three in Coolify's environment variables UI.
       # These match the variable names Laravel uses by default
       # so you can reference the same values in your API's env.
+
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      # Enable page-level data checksums at cluster init. Detects silent
+      # disk corruption early. Only applies on a FRESH init — an existing
+      # data directory is unaffected.
 
       PGDATA: /var/lib/postgresql/data/pgdata
       # Explicit data directory inside the mount point.
@@ -38,11 +66,14 @@ services:
       # This is the critical volume — back this up regularly.
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE} -h 127.0.0.1 -q"]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 30s
+      # -h 127.0.0.1 forces a real TCP connection check (not just the local
+      # socket), matching how Laravel/the exporter actually connect. -q
+      # keeps the check output quiet.
       # pg_isready checks that Postgres is accepting connections.
       # The exporter below waits for this before starting.
       # retries: 5 because Postgres can take a moment on first boot
@@ -61,13 +92,43 @@ services:
   # Docs: https://github.com/prometheus-community/postgres_exporter
   # ─────────────────────────────────────────────────────────────
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    # Pinned version — avoid :latest so a redeploy can't silently pull a
+    # breaking exporter change. Bump deliberately.
     container_name: postgres-exporter
     restart: unless-stopped
+
+    # Resource ceiling — sacrificial telemetry. If OOM-killed you lose
+    # Postgres metrics, but Postgres itself (no limits, default OOM score)
+    # keeps running. That's the intended trade.
+    oom_score_adj: 1000
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
     depends_on:
       postgres:
         condition: service_healthy
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9187/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+      # Hits the exporter's landing page (200 OK once serving). Lightweight —
+      # does not trigger a full DB scrape like /metrics would.
 
     environment:
       DATA_SOURCE_NAME: "postgresql://${DB_USERNAME}:${DB_PASSWORD}@postgres:5432/${DB_DATABASE}?sslmode=disable"
