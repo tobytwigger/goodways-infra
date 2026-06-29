@@ -80,6 +80,18 @@ case "$DESTINATION" in
       echo "ERROR: DESTINATION=production but VALHALLA_REMOTE_HOST is empty in .env." >&2
       exit 1
     fi
+    echo "WARNING: about to upload to PRODUCTION (${VALHALLA_REMOTE_HOST})."
+    echo "  scp copies over the existing files but does NOT remove stale ones, so a"
+    echo "  smaller new tileset can leave old tiles behind and serve corrupt routes."
+    echo "  Before continuing, either:"
+    echo "    - delete ${VALHALLA_REMOTE_PATH} on the server (incurs downtime), or"
+    echo "    - implement a zero-downtime swap (upload to ${VALHALLA_REMOTE_PATH}_2,"
+    echo "      point Valhalla at it, and only delete the old dir on the next deploy)."
+    read -r -p "Continue uploading to production? (y/N) " reply
+    case "$reply" in
+      [yY]|[yY][eE][sS]) ;;
+      *) echo "Aborted." >&2; exit 1 ;;
+    esac
     echo "==> Uploading tileset to ${VALHALLA_REMOTE_HOST} ..."
     scp -r "${ARTIFACTS[@]}" \
       "${VALHALLA_REMOTE_USER}@${VALHALLA_REMOTE_HOST}:${VALHALLA_REMOTE_PATH}/"
