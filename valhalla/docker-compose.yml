@@ -1,7 +1,6 @@
-version: '3.8'
+version: "3.8"
 
 services:
-
   # ─────────────────────────────────────────────────────────────
   # VALHALLA
   # Open-source routing engine for turn-by-turn navigation.
@@ -29,6 +28,9 @@ services:
       #   https://download.geofabrik.de/europe/great-britain-latest.osm.pbf
       # Omit if you pre-download PBF files into the valhalla_data volume
       # under /custom_files before first boot.
+      # e.g. https://download.geofabrik.de/europe/great-britain-latest.osm.pbf
+      use_tiles_ignore_pbf: "True"
+      # Do not build tiles, use existing instead.
 
     ports:
       - "127.0.0.1:8002:8002"
@@ -43,7 +45,11 @@ services:
       # regions; the volume prevents rebuilding on every restart.
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8002/status | grep -q '\"version\"'"]
+      test:
+        [
+          "CMD-SHELL",
+          'curl -sf http://localhost:8002/status | grep -q ''"version"''',
+        ]
       interval: 30s
       timeout: 10s
       retries: 5

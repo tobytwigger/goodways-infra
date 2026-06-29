@@ -1,0 +1,43 @@
+# Run locally to generate valhalla_tiles.tar from OSM data.
+# Usage: ./build.sh
+# Do NOT use this file on the server.
+
+services:
+  valhalla:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: valhalla_build
+    restart: "no"
+
+    # Cap the build container's memory so the cgroup OOM killer kills it
+    # cleanly instead of the host OOM killer thrashing swap and freezing the
+    # desktop. memswap_limit == mem_limit gives the container ZERO swap, so it
+    # can never spill into host swap during "parsing ways".
+    #   - 16GB box: 12g leaves ~3.5g for the host/desktop + Docker daemon.
+    #   - Close heavy apps (browser, IDE) before building; you can raise this
+    #     to 13g if the build OOM-kills, or lower it if the desktop still chokes.
+    # If the container dies with exit code 137, it hit this limit — raise it or
+    # free more RAM, don't remove the cap (that's what was freezing the OS).
+    mem_limit: 12g
+    memswap_limit: 12g
+
+    environment:
+      build_elevation: "True"
+      build_admins: "True"
+      build_time_zones: "True"
+      serve_tiles: "False"
+      # serve_tiles=False means the container exits after building.
+      # The resulting valhalla_tiles.tar will be in ./custom_files.
+
+      server_threads: "4"
+      # Build concurrency (mjolnir.concurrency). Defaults to nproc (16 on this
+      # box), and each thread holds graph + elevation tiles in RAM during the
+      # "enhance" stage — 16 threads OOM-killed the build under mem_limit. Peak
+      # build memory scales with this number, so keep it low. 4 builds GB
+      # comfortably under 12g; raise toward 6-8 only if you also raise mem_limit.
+      # (Only affects building here — serve_tiles=False, so no serving threads.)
+
+    volumes:
+      - ./custom_files:/custom_files
