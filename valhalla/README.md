@@ -25,7 +25,7 @@ Deployment happens automatically at the end of `build.sh`, controlled by
 
 - **`DESTINATION=local`** — copies the tileset into `../../goodways-api/custom_files`
   (`LOCAL_DEST`). Then `cd ../../goodways-api && docker compose up -d valhalla`.
-- **`DESTINATION=PRODUCTION`** — `scp`s the tileset to the remote server and
+- **`DESTINATION=production`** — `scp`s the tileset to the remote server and
   restarts the `valhalla` container.
 
 Only the artifacts the server loads are copied (config, tiles tar, admin /
@@ -38,8 +38,8 @@ See [.env.example](.env.example). Copy it to `.env` (gitignored) and set:
 
 | Variable | Purpose |
 |---|---|
-| `DESTINATION` | `local` (copy to goodways-api) or `PRODUCTION` (scp to server). |
+| `DESTINATION` | `local` (copy to goodways-api) or `production` (scp to server). |
 | `LOCAL_DEST` | Local copy target. Default `../../goodways-api/custom_files`. |
-| `VALHALLA_REMOTE_USER` / `VALHALLA_REMOTE_HOST` | SSH login for `PRODUCTION`. |
+| `VALHALLA_REMOTE_USER` / `VALHALLA_REMOTE_HOST` | SSH login for `production`. |
 | `VALHALLA_REMOTE_PATH` | Absolute path to `custom_files` on the server. |
 | `VALHALLA_TILE_URLS` | OSM extract to build from (e.g. Geofabrik great-britain). |

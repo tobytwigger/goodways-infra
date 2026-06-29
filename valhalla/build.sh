@@ -22,7 +22,7 @@ MIN_PBF_BYTES=1000000000  # ~1GB floor; the real GB extract is ~2GB, an error pa
 
 # Where the finished tileset goes. Set DESTINATION in .env:
 #   local      -> copy into the goodways-api repo's custom_files (for Sail)
-#   PRODUCTION -> scp to the remote server and restart Valhalla
+#   production -> scp to the remote server and restart Valhalla
 DESTINATION="${DESTINATION:-local}"
 LOCAL_DEST="${LOCAL_DEST:-../../goodways-api/custom_files}"
 
@@ -75,9 +75,9 @@ case "$DESTINATION" in
     cp -rv "${ARTIFACTS[@]}" "$LOCAL_DEST/"
     echo "==> Done. Bring Valhalla up in goodways-api to load the new tiles."
     ;;
-  PRODUCTION)
+  production)
     if [ -z "${VALHALLA_REMOTE_HOST:-}" ]; then
-      echo "ERROR: DESTINATION=PRODUCTION but VALHALLA_REMOTE_HOST is empty in .env." >&2
+      echo "ERROR: DESTINATION=production but VALHALLA_REMOTE_HOST is empty in .env." >&2
       exit 1
     fi
     echo "==> Uploading tileset to ${VALHALLA_REMOTE_HOST} ..."
@@ -86,7 +86,7 @@ case "$DESTINATION" in
     echo "==> Done. Valhalla will load the new tiles on restart."
     ;;
   *)
-    echo "ERROR: set DESTINATION=local or DESTINATION=PRODUCTION in .env (got '$DESTINATION')." >&2
+    echo "ERROR: set DESTINATION=local or DESTINATION=production in .env (got '$DESTINATION')." >&2
     exit 1
     ;;
 esac
