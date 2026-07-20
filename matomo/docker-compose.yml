@@ -32,6 +32,7 @@ services:
     image: matomo:latest
     container_name: matomo-cron
     restart: unless-stopped
+    user: www-data
     volumes:
       - matomo-app-data:/var/www/html
     entrypoint: >
