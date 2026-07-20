@@ -1,0 +1,47 @@
+services:
+  db:
+    image: mariadb:latest
+    container_name: matomo-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MATOMO_DATABASE_DBNAME}
+      MYSQL_USER: ${MATOMO_DATABASE_USERNAME}
+      MYSQL_PASSWORD: ${MATOMO_DATABASE_PASSWORD}
+    volumes:
+      - matomo-db-data:/var/lib/mysql
+
+  matomo:
+    image: matomo:latest
+    container_name: matomo-app
+    restart: unless-stopped
+    ports:
+      - "${MATOMO_PORT:-8080}:80"
+    environment:
+      MATOMO_DATABASE_HOST: db
+      MATOMO_DATABASE_USERNAME: ${MATOMO_DATABASE_USERNAME}
+      MATOMO_DATABASE_PASSWORD: ${MATOMO_DATABASE_PASSWORD}
+      MATOMO_DATABASE_DBNAME: ${MATOMO_DATABASE_DBNAME}
+      PHP_MEMORY_LIMIT: 512M
+    volumes:
+      - matomo-app-data:/var/www/html
+    depends_on:
+      - db
+
+  cron:
+    image: matomo:latest
+    container_name: matomo-cron
+    restart: unless-stopped
+    volumes:
+      - matomo-app-data:/var/www/html
+    entrypoint: >
+      /bin/sh -c "while true; do
+      php /var/www/html/console core:archive;
+      sleep 300;
+      done"
+    depends_on:
+      - db
+
+volumes:
+  matomo-db-data:
+  matomo-app-data:
