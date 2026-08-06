@@ -1,3 +1,5 @@
 valhalla/custom_files
 valhalla/.env
 matomo/.env
+wordpress/.env
+wordpress/backup.sql
