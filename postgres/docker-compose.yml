@@ -145,7 +145,7 @@ services:
       # not just the one in DATA_SOURCE_NAME.
 
     ports:
-      - "127.0.0.1:9187:9187"
+      - "127.0.0.1:9188:9187"
       # Loopback only. Alloy scrapes this on localhost:9187.
 
     networks:
