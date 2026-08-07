@@ -1,6 +1,6 @@
-FROM postgis/postgis:17-3.5
+FROM postgis/postgis:18-3.6
 
-RUN apt-get update && apt-get install -y postgresql-17-h3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y postgresql-18-h3 && rm -rf /var/lib/apt/lists/*
 
 # Online reindex on every startup to repair glibc collation drift (corrupted
 # text btree indexes after a base-image rebuild). Runs CONCURRENTLY in the

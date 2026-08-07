@@ -29,7 +29,7 @@ ok "postgres_exporter removed."
 log "Removing PostgreSQL"
 systemctl stop postgresql    2>/dev/null || true
 systemctl disable postgresql 2>/dev/null || true
-apt-get remove -y postgresql-17 postgresql-17-postgis-3 2>/dev/null || true
+apt-get remove -y postgresql-18 postgresql-18-postgis-3 2>/dev/null || true
 apt-get autoremove -y 2>/dev/null || true
 rm -f /etc/apt/sources.list.d/pgdg.list
 
