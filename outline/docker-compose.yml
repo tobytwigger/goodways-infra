@@ -1,0 +1,62 @@
+services:
+  outline:
+    image: docker.getoutline.com/outlinewiki/outline:latest
+    container_name: outline
+    restart: unless-stopped
+    env_file: ./.env
+    environment:
+      SERVICE_FQDN_OUTLINE: ${SERVICE_FQDN_OUTLINE}
+      # Coolify magic var — set this service's domain in the Coolify UI.
+      # Coolify's proxy (fronted by your Cloudflare Tunnel) then routes to
+      # this container and terminates TLS, so no https-portal container
+      # is needed here.
+    ports:
+      - "127.0.0.1:${FORWARD_OUTLINE_PORT:-3000}:${PORT:-3000}"
+      # Loopback only — public traffic comes via the Coolify proxy above,
+      # not this binding. This is just for local/debug access. Override
+      # FORWARD_OUTLINE_PORT in .env if the default is already taken on
+      # the host.
+    volumes:
+      - storage-data:/var/lib/outline/data
+    depends_on:
+      - postgres
+      - redis
+
+  redis:
+    image: redis
+    container_name: outline-redis
+    restart: unless-stopped
+    env_file: ./.env
+    ports:
+      - "127.0.0.1:${FORWARD_REDIS_PORT:-6379}:6379"
+      # Loopback only — Outline reaches Redis via the internal Docker
+      # network using the container name "redis". Override
+      # FORWARD_REDIS_PORT in .env if 6379 is already taken on the host.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  postgres:
+    image: postgres:18
+    container_name: outline-postgres
+    restart: unless-stopped
+    env_file: ./.env
+    expose:
+      - "5432"
+    volumes:
+      - database-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "outline", "-U", "user"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    environment:
+      POSTGRES_USER: "user"
+      POSTGRES_PASSWORD: "pass"
+      POSTGRES_DB: "outline"
+
+volumes:
+  storage-data:
+  database-data:

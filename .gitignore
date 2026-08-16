@@ -3,3 +3,4 @@ valhalla/.env
 matomo/.env
 wordpress/.env
 wordpress/backup.sql
+outline/.env
