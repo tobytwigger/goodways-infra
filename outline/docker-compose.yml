@@ -21,6 +21,13 @@ services:
     depends_on:
       - postgres
       - redis
+    networks:
+      - default
+      - coolify
+      # "coolify" is the external network Coolify's Traefik proxy is on.
+      # Without it, Traefik has no path to this container even though it
+      # generates a router for it from SERVICE_FQDN_OUTLINE — requests to
+      # docs.goodways.org 404 as if no route exists at all.
 
   redis:
     image: redis
@@ -56,6 +63,10 @@ services:
       POSTGRES_USER: "user"
       POSTGRES_PASSWORD: "pass"
       POSTGRES_DB: "outline"
+
+networks:
+  coolify:
+    external: true
 
 volumes:
   storage-data:
