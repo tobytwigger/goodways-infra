@@ -10,6 +10,13 @@ services:
       # Coolify's proxy (fronted by your Cloudflare Tunnel) then routes to
       # this container and terminates TLS, so no https-portal container
       # is needed here.
+      DATABASE_URL: postgres://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/outline
+      # Coolify magic vars — auto-generates strong random Postgres
+      # credentials on first deploy, shared with the postgres service
+      # below via the same var names. Set here (not in .env) because
+      # env_file entries are loaded literally by Docker and don't get
+      # ${...} substituted — only docker-compose.yml's own environment:
+      # block does. This overrides the plain env_file DATABASE_URL.
     ports:
       - "127.0.0.1:${FORWARD_OUTLINE_PORT:-3000}:${PORT:-3000}"
       # Loopback only — public traffic comes via the Coolify proxy above,
@@ -55,13 +62,13 @@ services:
     volumes:
       - database-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD", "pg_isready", "-d", "outline", "-U", "user"]
+      test: ["CMD-SHELL", "pg_isready -d outline -U \"$$POSTGRES_USER\""]
       interval: 30s
       timeout: 20s
       retries: 3
     environment:
-      POSTGRES_USER: "user"
-      POSTGRES_PASSWORD: "pass"
+      POSTGRES_USER: ${SERVICE_USER_POSTGRES}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
       POSTGRES_DB: "outline"
 
 networks:
