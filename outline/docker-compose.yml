@@ -18,13 +18,15 @@ services:
       # ${...} substituted — only docker-compose.yml's own environment:
       # block does. This overrides the plain env_file DATABASE_URL.
       #
-      # Hostname is "outline-postgres" (the postgres service's
-      # container_name below), not the generic "postgres" service alias —
-      # this container also sits on the shared external "coolify" network
-      # (for Traefik routing), which other stacks in this repo also join
-      # with their own services generically aliased "postgres"/"redis".
-      # The generic alias is ambiguous across that shared network; the
-      # container_name is unique.
+      # Hostname is "outline-postgres" — the postgres service's key name
+      # below, which is what Docker actually registers as the network
+      # alias (container_name is cosmetic; Coolify overrides real container
+      # names with its own scheme, so it never produces a resolvable DNS
+      # entry). This container also sits on the shared external "coolify"
+      # network (for Traefik routing), which other stacks in this repo also
+      # join with their own services keyed "postgres"/"redis" — a generic
+      # service-key alias is ambiguous across that shared network; a
+      # unique key name isn't.
     ports:
       - "127.0.0.1:${FORWARD_OUTLINE_PORT:-3000}:${PORT:-3000}"
       # Loopback only — public traffic comes via the Coolify proxy above,
@@ -34,8 +36,8 @@ services:
     volumes:
       - storage-data:/var/lib/outline/data
     depends_on:
-      - postgres
-      - redis
+      - outline-postgres
+      - outline-redis
     networks:
       - default
       - coolify
@@ -44,7 +46,7 @@ services:
       # generates a router for it from SERVICE_FQDN_OUTLINE — requests to
       # docs.goodways.org 404 as if no route exists at all.
 
-  redis:
+  outline-redis:
     image: redis
     container_name: outline-redis
     restart: unless-stopped
@@ -52,15 +54,16 @@ services:
     ports:
       - "127.0.0.1:${FORWARD_REDIS_PORT:-6379}:6379"
       # Loopback only — Outline reaches Redis via the internal Docker
-      # network using the container name "redis". Override
-      # FORWARD_REDIS_PORT in .env if 6379 is already taken on the host.
+      # network using the service key "outline-redis" (see REDIS_URL in
+      # .env). Override FORWARD_REDIS_PORT in .env if 6379 is already
+      # taken on the host.
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 30s
       retries: 3
 
-  postgres:
+  outline-postgres:
     image: postgres:18
     container_name: outline-postgres
     restart: unless-stopped
