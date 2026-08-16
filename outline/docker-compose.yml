@@ -10,13 +10,21 @@ services:
       # Coolify's proxy (fronted by your Cloudflare Tunnel) then routes to
       # this container and terminates TLS, so no https-portal container
       # is needed here.
-      DATABASE_URL: postgres://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/outline
+      DATABASE_URL: postgres://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@outline-postgres:5432/outline
       # Coolify magic vars — auto-generates strong random Postgres
       # credentials on first deploy, shared with the postgres service
       # below via the same var names. Set here (not in .env) because
       # env_file entries are loaded literally by Docker and don't get
       # ${...} substituted — only docker-compose.yml's own environment:
       # block does. This overrides the plain env_file DATABASE_URL.
+      #
+      # Hostname is "outline-postgres" (the postgres service's
+      # container_name below), not the generic "postgres" service alias —
+      # this container also sits on the shared external "coolify" network
+      # (for Traefik routing), which other stacks in this repo also join
+      # with their own services generically aliased "postgres"/"redis".
+      # The generic alias is ambiguous across that shared network; the
+      # container_name is unique.
     ports:
       - "127.0.0.1:${FORWARD_OUTLINE_PORT:-3000}:${PORT:-3000}"
       # Loopback only — public traffic comes via the Coolify proxy above,
