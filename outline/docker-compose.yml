@@ -6,34 +6,34 @@ services:
     env_file: ./.env
     labels:
       # Tell Traefik to natively recognize and forward the HTTPS protocol state
-      - traefik.http.middlewares.outline-xfp.headers.sslproxyheaders.X-Forwarded-Proto=https
+      # - traefik.http.middlewares.outline-xfp.headers.sslproxyheaders.X-Forwarded-Proto=https
 
       # Apply the middleware to your router (Keep gzip OFF for now to fix the WebSockets stream)
-      - "traefik.http.routers.http-0-gnlgoy4tb30covedmjr3y3yq-outline.middlewares=outline-xfp"
+      # - "traefik.http.routers.http-0-gnlgoy4tb30covedmjr3y3yq-outline.middlewares=outline-xfp"
 
-        # Tell Outline the request arrived over https.
-        #
-        # TLS terminates at Cloudflare and the tunnel delivers plain http to
-        # Traefik's :80. cloudflared does NOT send X-Forwarded-Proto (verified —
-        # it signals the edge scheme via CF-Visitor instead), and Cloudflare
-        # refuses to let a Transform Rule set X-Forwarded-Proto, so the header
-        # has to be stamped here. Outline sets app.proxy = true and derives
-        # ctx.secure from that header, then writes the OAuth CSRF cookie with
-        # secure: true whenever NODE_ENV=production — so every sign-in dies with
-        # "Cannot send secure cookie over unencrypted connection" without it.
-        #
-        # Traefik applies X-Forwarded-* at the entrypoint, before the router's
-        # middleware chain, so this overwrites it on the way to this container.
-        # - traefik.http.middlewares.outline-xfp.headers.sslProxyHeaders.X-Forwarded-Proto=https
-        # - traefik.http.middlewares.outline-xfp.headers.customrequestheaders.X-Forwarded-Proto=https
-        # The router name comes from Coolify's resource UUID. That's stable
-        # across redeploys — it only changes if the Outline resource is deleted
-        # and recreated, in which case re-read it with:
-        #   docker inspect $(docker ps -qf name=outline) \
-        #     --format '{{json .Config.Labels}}' | jq
-        # "gzip" is Coolify's own middleware; this label replaces the generated
-        # value wholesale rather than appending, so it has to stay in the list.
-        # - traefik.http.routers.http-0-gnlgoy4tb30covedmjr3y3yq-outline.middlewares=gzip,outline-xfp
+      # Tell Outline the request arrived over https.
+      #
+      # TLS terminates at Cloudflare and the tunnel delivers plain http to
+      # Traefik's :80. cloudflared does NOT send X-Forwarded-Proto (verified —
+      # it signals the edge scheme via CF-Visitor instead), and Cloudflare
+      # refuses to let a Transform Rule set X-Forwarded-Proto, so the header
+      # has to be stamped here. Outline sets app.proxy = true and derives
+      # ctx.secure from that header, then writes the OAuth CSRF cookie with
+      # secure: true whenever NODE_ENV=production — so every sign-in dies with
+      # "Cannot send secure cookie over unencrypted connection" without it.
+      #
+      # Traefik applies X-Forwarded-* at the entrypoint, before the router's
+      # middleware chain, so this overwrites it on the way to this container.
+      # - traefik.http.middlewares.outline-xfp.headers.sslProxyHeaders.X-Forwarded-Proto=https
+      - traefik.http.middlewares.outline-xfp.headers.customrequestheaders.X-Forwarded-Proto=https
+      # The router name comes from Coolify's resource UUID. That's stable
+      # across redeploys — it only changes if the Outline resource is deleted
+      # and recreated, in which case re-read it with:
+      #   docker inspect $(docker ps -qf name=outline) \
+      #     --format '{{json .Config.Labels}}' | jq
+      # "gzip" is Coolify's own middleware; this label replaces the generated
+      # value wholesale rather than appending, so it has to stay in the list.
+      - traefik.http.routers.http-0-gnlgoy4tb30covedmjr3y3yq-outline.middlewares=outline-xfp
     environment:
       SERVICE_FQDN_OUTLINE: ${SERVICE_FQDN_OUTLINE}
       # Coolify magic var — set this service's domain in the Coolify UI.
