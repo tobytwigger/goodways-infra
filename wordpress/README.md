@@ -44,7 +44,7 @@ mysql -u root -p wordpress < /tmp/backup.sql
 
 
 
-### Install the wp cli if needed
+### Install the wp cli 
 ```
 docker exec -it $(docker ps --filter 'name=wordpress-goodways' --format '{{.Names}}' | head -1) bash
 
@@ -53,3 +53,24 @@ php wp-cli.phar --info
 chmod +x wp-cli.phar
 mv wp-cli.phar /usr/local/bin/wp
 ```
+
+
+### Migrate site URLs and config
+
+```
+docker exec -it $(docker ps --filter 'name=wordpress-goodways' --format '{{.Names}}' | head -1) \
+  wp option update siteurl 'http://goodways.local:8081' --allow-root
+
+docker exec -it $(docker ps --filter 'name=wordpress-goodways' --format '{{.Names}}' | head -1) \
+  wp option update home 'http://goodways.local:8081' --allow-root
+
+docker exec -it $(docker ps --filter 'name=wordpress-goodways' --format '{{.Names}}' | head -1) \
+  wp search-replace 'https://goodways.org' 'http://goodways.local:8081' --allow-root
+  
+  ```
+
+
+
+### Open the site
+
+http://goodways.local:8081/
